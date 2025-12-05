@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Image Generator</title>
+  <!-- note the leading slash -->
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="container" role="main">
+    <header class="header">
+      <div>
+        <h1>Image Generator</h1>
+        <p class="muted">
+          Generate image with prompt
+        </p>
+      </div>
+    </header>
+
+    <section class="card">
+      <form id="genForm" class="form">
+        <label for="query" class="label">Image idea</label>
+        <textarea
+          id="query"
+          name="query"
+          placeholder="Enter query...."
+          required
+        ></textarea>
+
+        <div class="controls">
+          <button type="submit" class="btn primary">Generate</button>
+        </div>
+      </form>
+      <div id="status" class="status hidden" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <div id="statusText">Preparing...</div>
+      </div>
+
+      <section
+        id="result"
+        class="result hidden"
+        aria-hidden="true"
+      >
+        <div class="result-header">
+          <h2>Result</h2>
+          <div class="badges">
+            <span id="textTokens" class="badge">Text tokens: —</span>
+            <span id="imageTokens" class="badge">Image tokens: —</span>
+          </div>
+        </div>
+
+        <div class="image-wrap">
+          <img id="genImage" alt="Generated result image" />
+        </div>
+
+        <details class="details">
+          <summary>Prompt used</summary>
+          <pre id="promptBlock" class="mono"></pre>
+        </details>
+
+        <details class="details">
+          <summary>Verification</summary>
+          <pre id="verification" class="mono"></pre>
+        </details>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById('genForm');
+    const status = document.getElementById('status');
+    const statusText = document.getElementById('statusText');
+    const resultSection = document.getElementById('result');
+    const genImage = document.getElementById('genImage');
+    const promptBlock = document.getElementById('promptBlock');
+    const textTokensBadge = document.getElementById('textTokens');
+    const imageTokensBadge = document.getElementById('imageTokens');
+    const verificationPre = document.getElementById('verification');
+
+    function showStatus(msg) {
+      statusText.textContent = msg;
+      status.classList.remove('hidden');
+    }
+    function hideStatus() {
+      status.classList.add('hidden');
+    }
+    function showResult() {
+      resultSection.classList.remove('hidden');
+      resultSection.setAttribute('aria-hidden', 'false');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const query = document.getElementById('query').value.trim();
+      if (!query) return;
+
+      const payload = {
+        query,
+      };
+
+      // UI: hide previous results and show status
+      resultSection.classList.add('hidden');
+      resultSection.setAttribute('aria-hidden', 'true');
+      showStatus('Rewriting query into an image prompt…');
+
+      try {
+        const resp = await fetch('/userquery', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!resp.ok) {
+          const errBody = await resp.json().catch(() => ({}));
+          throw new Error(errBody.detail || 'Server error while generating image');
+        }
+
+        showStatus('Generating image…');
+        const data = await resp.json();
+
+        // Build data URL from base64 + mime
+        if (data.image_base64) {
+          const mimeType = data.mime || 'image/jpeg';  // default fallback
+          genImage.src = `data:${mimeType};base64,${data.image_base64}`;
+        } else {
+          genImage.src = '';
+        }
+
+        genImage.alt = (data.prompt_text || '').slice(0, 120) || 'Generated image';
+
+        // Tokens and metadata
+        textTokensBadge.textContent = `Text tokens: ${data.tokens?.text_tokens ?? '—'}`;
+        imageTokensBadge.textContent = `Image tokens: ${data.tokens?.image_tokens ?? '—'}`;
+
+        promptBlock.textContent = data.prompt_text ?? '';
+        verificationPre.textContent = JSON.stringify(data.verification ?? {}, null, 2);
+
+        hideStatus();
+        showResult();
+      } catch (err) {
+        hideStatus();
+        alert('Error: ' + (err.message || err));
+        console.error(err);
+      }
+    });
+  </script>
+</body>
+</html>

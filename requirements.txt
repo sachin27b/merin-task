@@ -1,0 +1,6 @@
+ipykernel
+google-genai
+pillow
+fastapi
+uvicorn
+python-dotenv
